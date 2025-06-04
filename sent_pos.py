@@ -72,11 +72,11 @@ def task2():
             x_local = msg3.x - origin_ned['x']
             y_local = msg3.y - origin_ned['y']
             z_local = msg3.z - origin_ned['z']
-            
+
             log.log_data(x_local, y_local, z_local,
                          roll_feedback, pitch_feedback, yaw_feedback,
                          servo1_raw, servo2_raw, servo3_raw, servo4_raw)
-        time.sleep(0.2)
+        time.sleep(0.1)
 
 t1 = threading.Thread(target=thread_send_commands)
 t2 = threading.Thread(target=task2)

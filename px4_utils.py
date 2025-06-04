@@ -1,6 +1,5 @@
 import time
 import math
-from pynput import keyboard
 
 # Biến global
 master = None

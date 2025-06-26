@@ -1,3 +1,4 @@
+from pymavlink import mavutil
 import time
 import math
 
@@ -9,11 +10,12 @@ thrust = 0.4
 stop_event = None
 servo_output_raw = None
 attitude = None
-posistion_msg = None
+
 def init_globals(m):
     global master
     master = m
 
+#  Lấy time_boot_ms gốc từ FC để đồng bộ
 def get_time_px4():
     global master
     global t0_fc, t0_pc
@@ -28,9 +30,6 @@ def get_time_px4():
 
     t0_fc = msg.time_boot_ms              # Thời điểm PX4 gửi
     t0_pc = time.time()                   # Thời điểm PC nhận
-
-    print(f"✅ time_boot_ms từ FC: {t0_fc} ms — Thời gian PC: {t0_pc:.3f} s")
-
     return t0_fc
 
 def get_synced_time_boot_ms():
@@ -76,7 +75,7 @@ def send_attitude_setpoint(thrust=0.1, roll_deg=0.0, pitch_deg=0.0, yaw_deg=0.0)
 
 def init_setpoint():
     for _ in range(20):
-        send_attitude_setpoint(0.5)  
+        send_attitude_setpoint(0.1)  
         time.sleep(0.05)             # ~20Hz
 
 def offboard_mode():
@@ -87,7 +86,7 @@ def offboard_mode():
         master.target_component,
         300,  # MAV_CMD_DO_SET_MODE
         0,
-        1,  # MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+        29,  
         6,  # OFFBOARD
         0, 0, 0, 0, 0
     )
@@ -138,18 +137,7 @@ def get_attitude():
         attitude = msg
         return msg
     return attitude
-def get_local_position_ned():
-    global master
-    global posistion_msg
-
-    msg = master.recv_match(type='LOCAL_POSITION_NED', blocking=False, timeout=5)
-    if msg is not None:
-        posistion_msg = msg
-        return msg
-    if posistion_msg is not None:
-        return posistion_msg
-    return None
-
+    
 def position_mode():
     global master
     print("🛫 Chuyển sang position mode...")
@@ -162,5 +150,50 @@ def position_mode():
         3,  # custom mode
         0, 0, 0, 0, 0
     )
-    time.sleep(0.2)  # Đợi một chút để PX4 chuyển sang OFFBOARD
+    time.sleep(0.2)  # Đợi một chút để PX4 chuyển sang position mode
 
+def land_mode():
+    global master
+    base_mode = 29
+    custom_mode = 4
+    custom_sub_mode = 6
+
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,  # confirmation
+        base_mode,        # param1
+        custom_mode,      # param2
+        custom_sub_mode,  # param3
+        0, 0, 0, 0        # param4-7 unused
+    )
+
+    time.sleep(0.2)  # Đợi một chút để PX4 chuyển sang LAND mode
+
+def send_movement_vel_ned(vx = 0.0, vy = 0.0, vz = 0.0):
+    global master
+    master.mav.set_position_target_local_ned_send(
+        get_synced_time_boot_ms(),
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED,
+        0b111111000111,  # dùng vx, vy, vz
+        0, 0, 0,             # x, y, z (bị disable)
+        vx, vy, vz,      # vx, vy, vz
+        0, 0, 0,             # afx, afy, afz (bỏ qua)
+        0, 0                 # yaw, yaw_rate (bỏ qua)
+    )
+
+def send_movement_pos_ned(origin_ned = {'x': 0, 'y': 0, 'z': 0},x = 0,y = 0,altitude = 0):
+    global master
+    master.mav.set_position_target_local_ned_send(
+        get_synced_time_boot_ms(),
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED,
+        0b0000111111111000,  # chỉ x, y, z
+        origin_ned['x'] + x, origin_ned['y'] + y, origin_ned['z'] - altitude,  # Z là độ cao so với gốc
+        0, 0, 0, 0, 0, 0,
+        0, 0
+    )
